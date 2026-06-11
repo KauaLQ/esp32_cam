@@ -5,7 +5,7 @@ import numpy as np
 import socket
 
 # --- Configurações de Rede para Comunicação com o ESP32 de controle ---
-ESP32_IP = "192.168.137.171"
+ESP32_IP = "192.168.1.106"
 ESP32_PORT = 4210
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 

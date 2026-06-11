@@ -1,10 +1,12 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <ESPmDNS.h>
+#include <HTTPClient.h>
 #include <ESP32Servo.h>
+#include "env.h" // Lembre-se de criar seu próprio arquivo env.h se for usar o bot do Telegram, ou de substituir as variáveis botToken e chatId pelos seus valores reais.
 
-const char* ssid = "KAUA_LQ";
-const char* password = "12345678";
+const char* ssid = "CLEUDO";
+const char* password = "91898487";
 
 WiFiUDP udp;
 const int udpPort = 4210;
@@ -14,9 +16,9 @@ char incomingPacket[255];
 
 Servo servoX;
 Servo servoY;
-const int servoPinX = 2;
-const int servoPinY = 3;
-float posX = 0;
+const int servoPinX = 3;
+const int servoPinY = 2;
+float posX = 60;
 float posY = 60;
 
 // --- Parâmetros PID ---
@@ -36,6 +38,23 @@ float integralY = 0;
 
 unsigned long previousTime = 0;
 
+void enviarTelegram(const char *ip) {
+    HTTPClient http;
+
+    String url =
+      "https://api.telegram.org/bot" +
+      botToken +
+      "/sendMessage?chat_id=" +
+      chatId +
+      "&text=" +
+      ip;
+
+    http.begin(url);
+    int httpCode = http.GET();
+
+    http.end();
+}
+
 void setup() {
     Serial.begin(115200);
     pinMode(BLINK, OUTPUT);
@@ -47,6 +66,11 @@ void setup() {
         ledState = !ledState;
         digitalWrite(BLINK, ledState);
     }
+
+    IPAddress ip = WiFi.localIP();
+    char ipStr[16];
+    snprintf(ipStr, sizeof(ipStr), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+    enviarTelegram(ipStr);
 
     digitalWrite(BLINK, LOW);
 
