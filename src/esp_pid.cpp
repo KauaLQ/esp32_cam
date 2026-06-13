@@ -3,11 +3,15 @@
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <ESP32Servo.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include "control_index.h"
 #include "env.h" // Lembre-se de criar seu próprio arquivo env.h se for usar o bot do Telegram, ou de substituir as variáveis botToken e chatId pelos seus valores reais.
 
-const char* ssid = "CLEUDO";
-const char* password = "91898487";
+const char* ssid = "IFCE-PECEM-ADM";
+const char* password = "IFCE&pecem";
 
+AsyncWebServer server(80);
 WiFiUDP udp;
 const int udpPort = 4210;
 char incomingPacket[255];
@@ -22,16 +26,16 @@ float posX = 60;
 float posY = 60;
 
 // --- Parâmetros PID ---
-float KpX = 0.02;
-float KiX = 0.000;
-float KdX = 0.00;
+volatile float KpX = 0.02;
+volatile float KiX = 0.000;
+volatile float KdX = 0.00;
 float errorX = 0;
 float previousErrorX = 0;
 float integralX = 0;
 
-float KpY = 0.02;
-float KiY = 0.000;
-float KdY = 0.00;
+volatile float KpY = 0.02;
+volatile float KiY = 0.000;
+volatile float KdY = 0.00;
 float errorY = 0;
 float previousErrorY = 0;
 float integralY = 0;
@@ -72,8 +76,35 @@ void setup() {
     snprintf(ipStr, sizeof(ipStr), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
     enviarTelegram(ipStr);
 
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/html", htmlPage());
+    });
+
+    server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if(request->hasParam("kpx"))
+            KpX = request->getParam("kpx")->value().toFloat();
+
+        if(request->hasParam("kix"))
+            KiX = request->getParam("kix")->value().toFloat();
+
+        if(request->hasParam("kdx"))
+            KdX = request->getParam("kdx")->value().toFloat();
+
+        if(request->hasParam("kpy"))
+            KpY = request->getParam("kpy")->value().toFloat();
+
+        if(request->hasParam("kiy"))
+            KiY = request->getParam("kiy")->value().toFloat();
+
+        if(request->hasParam("kdy"))
+            KdY = request->getParam("kdy")->value().toFloat();
+
+        request->redirect("/");
+    });
+
     digitalWrite(BLINK, LOW);
 
+    server.begin();
     udp.begin(udpPort);
 
     servoX.attach(servoPinX);

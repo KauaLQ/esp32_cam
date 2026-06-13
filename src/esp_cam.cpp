@@ -6,8 +6,8 @@
 
 #define LED 33
 
-const char *ssid = "CLEUDO";
-const char *password = "91898487";
+const char *ssid = "IFCE-PECEM-ADM";
+const char *password = "IFCE&pecem";
 
 void startCameraServer();
 void setupLedFlash();
