@@ -6,8 +6,8 @@
 
 #define LED 33
 
-const char *ssid = "IFCE-PECEM-ADM";
-const char *password = "IFCE&pecem";
+const char *ssid = "CLEUDO";
+const char *password = "91898487";
 
 void startCameraServer();
 void setupLedFlash();
@@ -77,7 +77,7 @@ void setup() {
   }
   // drop down frame size for higher initial frame rate
   if (config.pixel_format == PIXFORMAT_JPEG) {
-    s->set_framesize(s, FRAMESIZE_VGA);
+    s->set_framesize(s, FRAMESIZE_SVGA);
   }
 
 // Setup LED FLash if LED pin is defined in camera_pins.h
