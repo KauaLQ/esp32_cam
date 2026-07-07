@@ -29,14 +29,14 @@ const int SERVO_Y_MAX = 180;
 // Agora configuráveis em tempo real via pacote UDP "CFG,..." (ver parseConfigPacket)
 volatile float KpX = 0.001;
 volatile float KiX = 0.000;
-volatile float KdX = 0.00;
+volatile float KdX = 0.0001;
 float errorX = 0;
 float previousErrorX = 0;
 float integralX = 0;
 
 volatile float KpY = 0.001;
 volatile float KiY = 0.000;
-volatile float KdY = 0.00;
+volatile float KdY = 0.0001;
 float errorY = 0;
 float previousErrorY = 0;
 float integralY = 0;
@@ -154,8 +154,6 @@ void loop() {
         alvoAtivo = true;
 
         sscanf(incomingPacket, "%f,%f", &errorX, &errorY);
-        if (abs(errorX) < 15) errorX = 0;
-        if (abs(errorY) < 15) errorY = 0;
 
         // Cálculo da variação de tempo (dt)
         unsigned long currentTime = millis();
@@ -164,21 +162,34 @@ void loop() {
         if (dt <= 0) return;
 
         // --- Controle PID ---
-        integralX += errorX * dt;
-        float derivativeX = (errorX - previousErrorX) / dt;
-        float outputX =
-            KpX * errorX +
-            KiX * integralX +
-            KdX * derivativeX;
-        previousErrorX = errorX;
+        float outputX = 0;
+        float outputY = 0;
 
-        integralY += errorY * dt;
-        float derivativeY = (errorY - previousErrorY) / dt;
-        float outputY =
-            KpY * errorY +
-            KiY * integralY +
-            KdY * derivativeY;
-        previousErrorY = errorY;
+        // Eixo X
+        if (abs(errorX) < 20) {
+            errorX = 0;
+            integralX = 0; // Anti-windup na zona morta
+            previousErrorX = 0;
+            outputX = 0;   // Força a saída a ser zero para parar o servo
+        } else {
+            integralX += errorX * dt;
+            float derivativeX = (errorX - previousErrorX) / dt;
+            outputX = KpX * errorX + KiX * integralX + KdX * derivativeX;
+            previousErrorX = errorX;
+        }
+
+        // Eixo Y
+        if (abs(errorY) < 20) {
+            errorY = 0;
+            integralY = 0; // Anti-windup na zona morta
+            previousErrorY = 0;
+            outputY = 0;   // Força a saída a ser zero para parar o servo
+        } else {
+            integralY += errorY * dt;
+            float derivativeY = (errorY - previousErrorY) / dt;
+            outputY = KpY * errorY + KiY * integralY + KdY * derivativeY;
+            previousErrorY = errorY;
+        }
 
         // --- MOVE SERVOS ---
         posX -= outputX;

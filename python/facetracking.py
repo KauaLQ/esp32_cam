@@ -46,15 +46,19 @@ CAM_DISPLAY_W = 640
 CAM_DISPLAY_H = 480
 GUI_REFRESH_MS = 33  # ~30 FPS para o display (a thread de tracking roda livre, independente disso)
 
+# --- Parâmetros de performance da detecção ---
+DETECT_EVERY_N_FRAMES = 3   # roda a detecção pesada a cada N frames
+DETECT_SCALE = 0.5          # detecta numa cópia reduzida do frame (mais rápido); 0.5 = metade da resolução
+
 # Variáveis de PID enviadas ao ESP32 via UDP (pacote "CFG,...").
 # Tupla = (chave usada no protocolo / igual ao firmware, rótulo exibido na GUI, valor padrão)
 PID_VARS = [
     ("kpx", "KpX", "0.001"),
     ("kix", "KiX", "0.000"),
-    ("kdx", "KdX", "0.000"),
+    ("kdx", "KdX", "0.0001"),
     ("kpy", "KpY", "0.001"),
     ("kiy", "KiY", "0.000"),
-    ("kdy", "KdY", "0.000"),
+    ("kdy", "KdY", "0.0001"),
 ]
 
 
@@ -146,12 +150,19 @@ class FaceTrackerWorker:
         self.get_esp_target = get_esp_target  # função -> (ip, porta) atuais, lidos da GUI
         self.log_callback = log_callback       # função para mandar mensagens pro Monitor/Erros da GUI
 
-        self.detector = FaceDetector()
+        # modelSelection=0 = modelo "short range" do mediapipe (mais rápido,
+        # ideal para rosto relativamente próximo da câmera, como é o caso aqui)
+        self.detector = FaceDetector(minDetectionCon=0.5, modelSelection=0)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         self.fps_suave = 0.0
         self.alpha = 0.1
         self.frame_count = 0
+
+        # --- Cache de detecção ---
+        # Guarda o último bbox conhecido para ser reaproveitado nos frames em
+        # que a detecção pesada é "pulada" (ver DETECT_EVERY_N_FRAMES).
+        self.last_bboxs = None
 
         self.running = False
         self.thread = None
@@ -271,6 +282,29 @@ class FaceTrackerWorker:
                 self.data_log_active = False
     # ----------------------------------------------------------------------------------------------
 
+    def _detectar_rosto(self, img):
+        """
+        Roda o detector de rosto numa cópia REDUZIDA do frame (DETECT_SCALE) e
+        devolve os bboxs já reescalados para as coordenadas do frame original.
+        Detectar em resolução menor é o que mais pesa no custo de CPU do
+        mediapipe/cvzone — reduzir a imagem antes de detectar costuma dar o
+        maior ganho de fluidez, mais até que pular frames.
+        """
+        small = cv2.resize(img, (0, 0), fx=DETECT_SCALE, fy=DETECT_SCALE)
+        _, bboxs_small = self.detector.findFaces(small, draw=False)
+
+        if not bboxs_small:
+            return []
+
+        inv_scale = 1.0 / DETECT_SCALE
+        bboxs = []
+        for b in bboxs_small:
+            x, y, w, h = b["bbox"]
+            x, y, w, h = int(x * inv_scale), int(y * inv_scale), int(w * inv_scale), int(h * inv_scale)
+            cx, cy = int(b["center"][0] * inv_scale), int(b["center"][1] * inv_scale)
+            bboxs.append({"bbox": (x, y, w, h), "center": (cx, cy), "score": b.get("score")})
+        return bboxs
+
     def run(self):
         try:
             while self.running:
@@ -285,8 +319,13 @@ class FaceTrackerWorker:
 
                 self.frame_count += 1
 
-                # --- Detecção de rosto (lógica original do projeto, preservada) ---
-                img, bboxs = self.detector.findFaces(img, draw=False)
+                # --- Detecção de rosto: roda pesada só a cada N frames, reaproveitando o último bbox
+                #     conhecido nos frames "pulados". O envio UDP continua
+                #     acontecendo em TODO frame, então o controle PID no ESP32
+                #     não fica "lento" — só a detecção em si é amortizada. ---
+                if self.frame_count % DETECT_EVERY_N_FRAMES == 0 or self.last_bboxs is None:
+                    self.last_bboxs = self._detectar_rosto(img)
+                bboxs = self.last_bboxs
 
                 # --- Cálculo de FPS suave e seguro ---
                 tempo_decorrido = time.time() - frame_inicio
@@ -354,7 +393,10 @@ class FaceTrackerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Face Tracker | ESP32-CAM Controller")
-        self.root.iconbitmap(resource_path("python/logo_if.ico"))
+        try:
+            self.root.iconbitmap(resource_path("python/logo_if.ico"))
+        except Exception:
+            pass  # ícone é opcional; não trava a aplicação se o arquivo não existir
         self.root.geometry("1000x680")
         self.root.minsize(900, 620)
 
