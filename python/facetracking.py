@@ -38,7 +38,7 @@ from cvzone.FaceDetectionModule import FaceDetector
 # ------------------------------------------------------------
 # CONFIGURAÇÃO PADRÃO (pode ser alterada na própria interface)
 # ------------------------------------------------------------
-DEFAULT_ESP32_IP = "192.168.1.107"
+DEFAULT_ESP32_IP = "192.168.1.100"
 DEFAULT_ESP32_PORT = 4210
 DEFAULT_STREAM_URL = "http://esp32cam.local:81/stream"
 
@@ -103,6 +103,10 @@ class CameraStream:
         self.running = False
         self.thread = None
         self.error = None
+        # --- FPS real da câmera (medido aqui, onde os frames realmente chegam) ---
+        self.fps = 0.0
+        self._fps_alpha = 0.1
+        self._last_frame_time = None
 
     def start(self):
         self.cap = cv2.VideoCapture(self.src, cv2.CAP_FFMPEG)
@@ -123,9 +127,27 @@ class CameraStream:
             ret, frame = self.cap.read()
             if not ret:
                 continue
+
+            now = time.time()
             with self.lock:
                 self.ret = ret
                 self.frame = frame
+
+                # calcula o FPS com base no intervalo entre frames REAIS
+                # (essa thread só itera quando cap.read() devolve um frame novo)
+                if self._last_frame_time is not None:
+                    dt = now - self._last_frame_time
+                    if dt > 0:
+                        fps_instantaneo = 1.0 / dt
+                        if self.fps == 0.0:
+                            self.fps = fps_instantaneo
+                        else:
+                            self.fps = (self._fps_alpha * fps_instantaneo) + ((1 - self._fps_alpha) * self.fps)
+                self._last_frame_time = now
+
+    def get_fps(self):
+        with self.lock:
+            return self.fps
 
     def read(self):
         with self.lock:
@@ -155,13 +177,10 @@ class FaceTrackerWorker:
         self.detector = FaceDetector(minDetectionCon=0.5, modelSelection=0)
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        self.fps_suave = 0.0
-        self.alpha = 0.1
-        self.frame_count = 0
-
         # --- Cache de detecção ---
         # Guarda o último bbox conhecido para ser reaproveitado nos frames em
         # que a detecção pesada é "pulada" (ver DETECT_EVERY_N_FRAMES).
+        self.frame_count = 0
         self.last_bboxs = None
 
         self.running = False
@@ -327,14 +346,8 @@ class FaceTrackerWorker:
                     self.last_bboxs = self._detectar_rosto(img)
                 bboxs = self.last_bboxs
 
-                # --- Cálculo de FPS suave e seguro ---
-                tempo_decorrido = time.time() - frame_inicio
-                if tempo_decorrido > 0:
-                    fps_instantaneo = 1 / tempo_decorrido
-                    if self.fps_suave == 0.0:
-                        self.fps_suave = fps_instantaneo
-                    else:
-                        self.fps_suave = (self.alpha * fps_instantaneo) + ((1 - self.alpha) * self.fps_suave)
+                # FPS real da câmera, medido na CameraStream (não no loop deste worker)
+                fps_camera = self.cam.get_fps()
 
                 if bboxs:
                     fx, fy = bboxs[0]["center"][0], bboxs[0]["center"][1]
@@ -361,7 +374,7 @@ class FaceTrackerWorker:
                     cv2.putText(img, f"ErroY: {erroY}", (20, 120), cv2.FONT_HERSHEY_PLAIN, 1.5, (255, 255, 0), 2)
 
                     with self.stats_lock:
-                        self.stats = {"erroX": erroX, "erroY": erroY, "fps": self.fps_suave, "alvo": True}
+                        self.stats = {"erroX": erroX, "erroY": erroY, "fps": fps_camera, "alvo": True}
                 else:
                     # --- DESENHOS SEM ALVO (mira no centro) ---
                     cv2.putText(img, "SEM ALVO", (ws - 250, 40), cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255), 3)
@@ -371,13 +384,13 @@ class FaceTrackerWorker:
                     cv2.line(img, (centerX, 0), (centerX, hs), (0, 0, 0), 2)
 
                     with self.stats_lock:
-                        self.stats = {"erroX": 0, "erroY": 0, "fps": self.fps_suave, "alvo": False}
+                        self.stats = {"erroX": 0, "erroY": 0, "fps": fps_camera, "alvo": False}
 
                 # grava a linha de log deste frame (só escreve algo se
                 # a gravação estiver ativa - ver start_recording()/stop_recording())
                 self._log_data(self.stats)
 
-                cv2.putText(img, f"FPS: {self.fps_suave:.1f}", (20, 40), cv2.FONT_HERSHEY_PLAIN, 1.5, (255, 0, 0), 2)
+                cv2.putText(img, f"FPS: {fps_camera:.1f}", (20, 40), cv2.FONT_HERSHEY_PLAIN, 1.5, (255, 0, 0), 2)
 
                 with self.display_lock:
                     self.display_frame = img
