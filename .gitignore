@@ -5,4 +5,4 @@
 .vscode/ipch
 src/env.h
 python/plotter.py
-python/grafico.png
+python/*.png

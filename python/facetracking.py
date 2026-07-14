@@ -38,7 +38,7 @@ from cvzone.FaceDetectionModule import FaceDetector
 # ------------------------------------------------------------
 # CONFIGURAÇÃO PADRÃO (pode ser alterada na própria interface)
 # ------------------------------------------------------------
-DEFAULT_ESP32_IP = "192.168.1.100"
+DEFAULT_ESP32_IP = "192.168.1.107"
 DEFAULT_ESP32_PORT = 4210
 DEFAULT_STREAM_URL = "http://esp32cam.local:81/stream"
 
@@ -54,10 +54,10 @@ DETECT_SCALE = 0.5          # detecta numa cópia reduzida do frame (mais rápid
 # Tupla = (chave usada no protocolo / igual ao firmware, rótulo exibido na GUI, valor padrão)
 PID_VARS = [
     ("kpx", "KpX", "0.001"),
-    ("kix", "KiX", "0.000"),
+    ("kix", "KiX", "0.00001"),
     ("kdx", "KdX", "0.0001"),
     ("kpy", "KpY", "0.001"),
-    ("kiy", "KiY", "0.000"),
+    ("kiy", "KiY", "0.00001"),
     ("kdy", "KdY", "0.0001"),
 ]
 

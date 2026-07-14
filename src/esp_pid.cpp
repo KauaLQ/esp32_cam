@@ -28,14 +28,14 @@ const int SERVO_Y_MAX = 180;
 // --- Parâmetros PID ---
 // Agora configuráveis em tempo real via pacote UDP "CFG,..." (ver parseConfigPacket)
 volatile float KpX = 0.001;
-volatile float KiX = 0.000;
+volatile float KiX = 0.00001;
 volatile float KdX = 0.0001;
 float errorX = 0;
 float previousErrorX = 0;
 float integralX = 0;
 
 volatile float KpY = 0.001;
-volatile float KiY = 0.000;
+volatile float KiY = 0.00001;
 volatile float KdY = 0.0001;
 float errorY = 0;
 float previousErrorY = 0;
